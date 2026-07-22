@@ -8,7 +8,7 @@ import { getExecutor } from "open-sse/executors/index.js";
 import { CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
-import { refreshAndUpdateCredentials } from "@/app/api/usage/[connectionId]/route.js";
+import { refreshAndUpdateCredentials } from "@/lib/services/credentials.js";
 import { QUOTA_AUTOPING_CONFIG } from "@/shared/constants/config";
 
 const C = QUOTA_AUTOPING_CONFIG;
@@ -295,4 +295,19 @@ export function startQuotaAutoPing() {
   runQuotaAutoPingTick().catch(() => {});
   g.interval = setInterval(() => { runQuotaAutoPingTick().catch(() => {}); }, C.tickIntervalMs);
   if (g.interval.unref) g.interval.unref();
+}
+
+export function stopQuotaAutoPing() {
+  if (!g.interval) return;
+  clearInterval(g.interval);
+  g.interval = null;
+  console.log("[AutoPing] scheduler stopped");
+}
+
+export function configureQuotaAutoPing(settings) {
+  const enabled = Object.values(C.providers).some((providerConfig) =>
+    Object.values(settings?.[providerConfig.settingsKey]?.connections || {}).some(Boolean)
+  );
+  if (enabled) startQuotaAutoPing();
+  else stopQuotaAutoPing();
 }

@@ -1,6 +1,6 @@
 {
-  "name": "9router-app",
-  "version": "0.9.1",
+  "name": "vansrouter-app",
+  "version": "0.9.75",
   "description": "9Router web dashboard",
   "private": true,
   "scripts": {
@@ -9,7 +9,7 @@
     "lint:undef": "node scripts/lint-undef.cjs",
     "lint:reacthooks": "node scripts/lint-reacthooks.cjs",
     "lint": "eslint . --no-warn-ignored",
-    "build": "next build --webpack",
+    "build": "node scripts/build.js",
     "start": "next start --port 20127",
     "dev:bun": "bun --bun next dev --webpack --port 20127",
     "build:bun": "bun --bun next build --webpack",
@@ -29,6 +29,7 @@
     "@xyflow/react": "^12.10.1",
     "bcryptjs": "^3.0.3",
     "confbox": "^0.2.4",
+    "dompurify": "^3.2.7",
     "express": "^5.2.1",
     "http-proxy-middleware": "^3.0.5",
     "jose": "^6.1.3",

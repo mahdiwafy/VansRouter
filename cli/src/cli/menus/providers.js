@@ -53,6 +53,9 @@ const PROVIDER_MODELS = {
     { id: "glm-4.7" },
   ],
   ag: [
+    { id: "gemini-3.6-flash-high" },
+    { id: "gemini-3.6-flash-medium" },
+    { id: "gemini-3.6-flash-low" },
     { id: "gemini-3-flash-agent" },
     { id: "gemini-3.5-flash-low" },
     { id: "gemini-3.5-flash-extra-low" },
@@ -131,7 +134,7 @@ const APIKEY_PROVIDERS = {
   openrouter: { id: "openrouter", name: "OpenRouter" },
   glm: { id: "glm", name: "GLM Coding" },
   minimax: { id: "minimax", name: "Minimax Coding" },
-  kimi: { id: "kimi", name: "Kimi Coding" },
+  kimi: { id: "kimi", name: "Kimi" },
   openai: { id: "openai", name: "OpenAI" },
   anthropic: { id: "anthropic", name: "Anthropic" },
   gemini: { id: "gemini", name: "Gemini" },

@@ -19,6 +19,7 @@ import {
   KIMCHI_CONFIG,
 } from "@/lib/oauth/constants/oauth";
 import { buildClineHeaders } from "@/shared/utils/clineAuth";
+import { validateAgentRouterConnection } from "open-sse/executors/agentrouter.js";
 
 // OAuth provider test endpoints
 const OAUTH_TEST_CONFIG = {
@@ -75,7 +76,8 @@ const OAUTH_TEST_CONFIG = {
     authPrefix: "Bearer ",
     refreshable: false,
   },
-  "kimi-coding": { checkExpiry: true, refreshable: false },
+  kimi: { checkExpiry: true, refreshable: true },
+  "kimi-coding": { checkExpiry: true, refreshable: true },
   cursor: { tokenExists: true },
   kilocode: {
     url: `${KILOCODE_CONFIG.apiBaseUrl}/api/profile`,
@@ -195,6 +197,27 @@ async function probeCloudCodeAssistAccess(connection, accessToken, effectiveProx
   const userAgent = connection.provider === "antigravity"
     ? "google-api-nodejs-client/9.15.1 vscode-antigravity/1.107.0"
     : "google-api-nodejs-client/9.15.1 gemini-cli/0.34.0";
+
+  if (connection.projectId) {
+    const res = await fetchWithConnectionProxy("https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "User-Agent": userAgent,
+      },
+      body: JSON.stringify({ project: connection.projectId }),
+    }, effectiveProxy);
+
+    if (res.ok) return { valid: true, error: null };
+
+    const bodyText = await res.text().catch(() => "");
+    return {
+      valid: false,
+      error: parseProviderErrorMessage(bodyText, `GCP Project ID test failed with status ${res.status}`),
+      status: res.status,
+    };
+  }
 
   const res = await fetchWithConnectionProxy(CLOUD_CODE_ASSIST_TEST_URL, {
     method: "POST",
@@ -619,10 +642,13 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         return { valid, error: valid ? null : "Invalid API key" };
       }
       case "alicode":
-      case "alicode-intl": {
-        // Aliyun Coding Plan uses OpenAI-compatible API
+      case "alicode-intl":
+      case "alims-intl": {
+        // Aliyun Coding Plan uses OpenAI-compatible API; alims-intl uses Model Studio compatible-mode
         const aliBaseUrl = connection.provider === "alicode-intl"
           ? "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions"
+          : connection.provider === "alims-intl"
+          ? "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
           : "https://coding.dashscope.aliyuncs.com/v1/chat/completions";
         const res = await fetchWithConnectionProxy(aliBaseUrl, {
           method: "POST",
@@ -781,6 +807,13 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
+      case "agentrouter": {
+        const valid = await validateAgentRouterConnection(
+          connection.apiKey,
+          (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy)
+        );
+        return { valid, error: valid ? null : "Invalid API key" };
+      }
       default:
         return { valid: false, error: "Provider test not supported" };
     }
@@ -792,9 +825,13 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
 /**
  * Test a single connection by ID, update DB, and return result.
  */
-export async function testSingleConnection(id) {
-  const connection = await getProviderConnectionById(id);
+export async function testSingleConnection(id, overrides = null) {
+  let connection = await getProviderConnectionById(id);
   if (!connection) return { valid: false, error: "Connection not found", latencyMs: 0, testedAt: new Date().toISOString() };
+
+  if (overrides) {
+    connection = { ...connection, ...overrides };
+  }
 
   const effectiveProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
 

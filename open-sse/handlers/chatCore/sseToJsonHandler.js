@@ -5,6 +5,8 @@ import { FORMATS } from "../../translator/formats.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats } from "./requestDetail.js";
 import { extractToolNames, fuzzyMatchToolName } from "../../translator/concerns/toolCall.js";
+import { openaiToClaudeNonStreaming } from "./nonStreamingHandler.js";
+import { decloakToolNames } from "../../utils/claudeCloaking.js";
 
 // Responses-API providers (e.g. codex) may emit SSE without content-type + use Responses output shape
 const isResponsesProvider = (p) => PROVIDERS[p]?.format === FORMATS.OPENAI_RESPONSES;
@@ -47,15 +49,21 @@ function pickAssistantMessageForChatCompletion(output) {
  */
 export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, validToolNames = null) {
   const chunks = [];
+  let streamError = null;
 
   for (const line of String(rawSSE || "").split("\n")) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("data:")) continue;
     const payload = trimmed.slice(5).trim();
     if (!payload || payload === "[DONE]") continue;
-    try { chunks.push(JSON.parse(payload)); } catch { /* ignore malformed lines */ }
+    try {
+      const chunk = JSON.parse(payload);
+      if (chunk?.error) streamError = chunk.error;
+      else chunks.push(chunk);
+    } catch { /* ignore malformed lines */ }
   }
 
+  if (streamError) return { error: streamError };
   if (chunks.length === 0) return null;
 
   const first = chunks[0];
@@ -68,10 +76,42 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, validToolNames =
   for (const chunk of chunks) {
     const choice = chunk?.choices?.[0];
     const delta = choice?.delta || {};
+
+    // OpenAI format: content in delta + usage at chunk root
     if (typeof delta.content === "string" && delta.content.length > 0) contentParts.push(delta.content);
     if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) reasoningParts.push(delta.reasoning_content);
     if (choice?.finish_reason) finishReason = choice.finish_reason;
     if (chunk?.usage && typeof chunk.usage === "object") usage = chunk.usage;
+
+    // Gemini / Antigravity format: content in response.candidates[*].content.parts
+    // and usageMetadata inside response envelope
+    //    data: {"response":{"candidates":[{...}],"usageMetadata":{"promptTokenCount":...,...}}}
+    if (!choice && chunk.response) {
+      const resp = chunk.response;
+      const candidate = resp.candidates?.[0];
+      if (candidate) {
+        const parts = candidate.content?.parts || [];
+        for (const part of parts) {
+          if (part.text !== undefined && part.text) contentParts.push(part.text);
+          if (part.thought && part.text) reasoningParts.push(part.text);
+        }
+        if (candidate.finishReason) finishReason = candidate.finishReason.toLowerCase();
+      }
+      // Extract usage from Gemini AG envelope
+      const usageMeta = resp.usageMetadata || chunk.usageMetadata;
+      if (usageMeta && !usage) {
+        const prompt = usageMeta.promptTokenCount || 0;
+        const completion = usageMeta.candidatesTokenCount || 0;
+        usage = {
+          prompt_tokens: prompt,
+          completion_tokens: completion,
+          total_tokens: usageMeta.totalTokenCount || (prompt + completion),
+          completion_tokens_details: {
+            reasoning_tokens: usageMeta.thoughtsTokenCount || 0
+          }
+        };
+      }
+    }
 
     // Accumulate tool_calls from streaming deltas
     if (Array.isArray(delta.tool_calls)) {
@@ -117,7 +157,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, validToolNames =
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, apiKeyName, clientRawRequest, onRequestSuccess, trackDone, appendLog }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, apiKeyName, clientRawRequest, onRequestSuccess, trackDone, appendLog, comboName, toolNameMap }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && isResponsesProvider(provider));
   if (!isSSE) return null; // not handled here
@@ -139,7 +179,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
 
       const usage = jsonResponse.usage || {};
       appendLog({ tokens: usage, status: "200 OK" });
-      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
+      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, comboName });
 
       const { msgItem, textContent } = pickAssistantMessageForChatCompletion(jsonResponse.output);
       const totalLatency = Date.now() - requestStartTime;
@@ -183,6 +223,21 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
             responseId: jsonResponse.id || `resp_${Date.now()}`
           }
         };
+      } else if (sourceFormat === FORMATS.CLAUDE) {
+        // Convert OpenAI response to Claude message format
+        const openaiBody = {
+          id: jsonResponse.id || `chatcmpl-${Date.now()}`,
+          model: jsonResponse.model || model,
+          choices: [{
+            index: 0,
+            message: { role: "assistant", content: textContent || (hasToolCalls ? null : "") },
+            finish_reason: hasToolCalls ? "tool_calls" : "stop"
+          }],
+          usage: { prompt_tokens: inTokens, completion_tokens: outTokens }
+        };
+        if (hasToolCalls) openaiBody.choices[0].message.tool_calls = toolCalls;
+        const reversed = openaiToClaudeNonStreaming(openaiBody, model);
+        finalResp = decloakToolNames(reversed, toolNameMap);
       } else {
         const message = { role: "assistant", content: textContent || (hasToolCalls ? null : "") };
         if (hasToolCalls) message.tool_calls = toolCalls;
@@ -210,6 +265,12 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
     const sseText = await providerResponse.text();
     const parsed = parseSSEToOpenAIResponse(sseText, model, extractToolNames(body?.tools));
     if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+    if (parsed.error) {
+      return createErrorResult(
+        HTTP_STATUS.BAD_GATEWAY,
+        parsed.error.message || "Upstream SSE stream failed"
+      );
+    }
 
     if (onRequestSuccess) await onRequestSuccess();
 
@@ -242,7 +303,16 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       }
     }
 
-    return { success: true, response: new Response(JSON.stringify(parsed), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+    // Reverse conversion: OpenAI → Claude when client sent Claude-format request
+    // (relayn provider path: request was translated CLAUDE→OPENAI upstream,
+    //  streaming response was aggregated to OpenAI JSON, must convert back)
+    let finalResp = parsed;
+    if (sourceFormat === FORMATS.CLAUDE) {
+      const reversed = openaiToClaudeNonStreaming(parsed, model);
+      finalResp = decloakToolNames(reversed, toolNameMap);
+    }
+
+    return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
   } catch (err) {
     console.error("[ChatCore] Chat Completions SSE→JSON failed:", err);
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to convert streaming response to JSON");

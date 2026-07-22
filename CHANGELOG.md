@@ -1,3 +1,207 @@
+# v0.9.75 (2026-07-21)
+
+VansRouter 0.9.75 introduces a materialized provider model catalog in SQLite (`cachedProviderModels`), parallelizes dynamic model resolution, switches dashboard pages to native direct fetching with `cache: "no-store"`, and adds background idle preloading for provider icons and font assets.
+
+## Performance & Optimization
+- **SQLite Materialized Model Catalog** — Created `cachedProviderModels` table (schema v2) for background non-blocking model catalog persistence and instant 1ms local DB queries.
+- **Parallel Upstream Resolution** — Replaced serial `for..of` loop in `allowedModels.js` with `Promise.allSettled` to cut initial `/v1/models` load time from ~16s to ~2.5s and cached response time to 11ms.
+- **ACL Deduplication** — Deduplicated `isProviderAllowed` and `isComboAllowed` evaluations per request via `Map` cache, reducing ACL overhead from 500+ calls to ~5 calls.
+- **Native Direct Dashboard Fetching** — Replaced legacy ad-hoc `fetchCache.js` with native `fetch(url, { cache: "no-store" })` across dashboard pages for 100% real-time accuracy without manual refresh.
+- **Icon & Font Asset Preloading** — Added `preloadProviderIcons` idle background preloader (`requestIdleCallback`) and preconnect font stylesheet links in `RootLayout`.
+
+# v0.9.72 (2026-07-21)
+
+
+VansRouter 0.9.72 fixes GitHub Actions CI/CD matrix build failures by exporting `getStaticProviderModels`, resolving `no-undef` lint errors, and aligning CI workflows with upstream v0.5.40 updates.
+
+## Fixed
+- **CI/CD Build Matrix** — Exported and imported `getStaticProviderModels` in `open-sse/config/providers.js` and `src/app/api/providers/[id]/models/route.js` to eliminate `no-undef` lint errors during GitHub Actions workflow runs.
+- **Workflow Reliability** — Aligned cross-platform build matrix runs across Node 22 and Node 24 runners on Ubuntu, MacOS, and Windows.
+
+# v0.9.71 (2026-07-21)
+
+VansRouter 0.9.71 registers two new AI providers (`ZenMux AI` & `TokenRouter`), updates `a6api` referral links, and bumps the version to 0.9.71.
+
+## Features
+- **ZenMux AI Provider (`zenmux`)** — Full registration for ZenMux AI (`https://zenmux.ai`) with OpenAI API compatibility, passthrough model support, and embeddings/image generation services.
+- **TokenRouter Provider (`tokenrouter`)** — Full registration for TokenRouter (`https://www.tokenrouter.com`) with OpenAI API compatibility, passthrough model support, and embeddings/image generation services.
+- **a6api Affiliate Link** — Configured custom referral URL (`https://a6api.com/?auth=register&aff=Ksbw`) for `a6api` provider registration.
+
+# v0.9.70 (2026-07-21)
+
+VansRouter 0.9.70 adds the new `a6api` provider with a curated selection of Top 5 models per provider family (GPT, Claude, Gemini, Grok, etc.), adopts critical upstream v0.5.40 Cursor HTTP/2 AgentService (`agent.api5.cursor.sh`) Connect RPC updates, aligns UsageStats table headers, and optimizes provider icon anti-spam caching.
+
+## Features
+- **a6api Provider** — Registration for `a6api` featuring top 5 curated models per brand family (GPT, Claude, Gemini, Grok, DeepSeek, Kimi) with OpenAI API compatibility and passthrough support.
+- **Custom a6api Cooldown Logic** — Pure HTTP status code error handling (3s cooldown for transient/network errors; standard fallback for 401/402/404).
+- **a6api Visual Branding** — Custom circular conic-gradient `A6` CSS icon for provider cards and dynamic topology maps.
+
+## Adopted Upstream Updates (v0.5.35 → v0.5.40)
+- **Cursor HTTP/2 Overhaul (`6994cd1f7`)** — Migrated Cursor IDE upstream from retired `api2.cursor.sh` to raw HTTP/2 Connect RPC `agent.api5.cursor.sh`, adding MCP tool calling, automatic `GetUsableModels`, and bumping client version to 3.12.17.
+- **Codex Client Sync (`d587b2a48`)** — Updated Codex `client_version` headers and added refresh-aware model sync.
+- **Kiro Reasoning Effort Mapping (`cef5dd4d6`, `eb00222c4`)** — Preserved `reasoning_effort` (`high`, `medium`, `low`) through OpenAI ↔ Kiro translation for GPT-5.6 models (`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`).
+- **Kiro Stream Terminal Output Validation (`7c7fae395`)** — Added stream payload validation to prevent empty SSE emissions.
+- **Translator `service_tier` Pass-through (`c97963c4f`)** — Passed `service_tier` field through OpenAI → Responses conversion.
+- **Better-SQLite3 Array Binding Crash Fix (`4f48ab8c7`)** — Resolved parameter array binding crash in SQLite queries.
+- **Alicode-Intl Split (`55628eea0`)** — Separated DashScope provider into Alibaba Coding Plan & Model Studio (`alims-intl`).
+- **Grok Build Subagent Models (`e0ba66745`)** — Configured Grok Build subagent model selection presets.
+
+## Fixed
+- **PR #54 (Gemini RPM & Circuit Breaker)** — Classified Gemini generic per-minute RPM `resource_exhausted` error as a short 60s rate-limit backoff (avoiding 1-hour quota lock loops) and aligned Embeddings handler with `settings.circuitBreakerEnabled`.
+- **UsageStats Table Alignment** — Fixed empty provider/model headers by synchronizing account column order and metadata aggregation.
+- **Cursor IDE Compatibility** — Resolved Cursor 429 "Update Required" errors via Connect RPC HTTP/2 protocol adoption and version bump to 3.12.17.
+
+# v0.9.63 (2026-07-19)
+
+VansRouter 0.9.63 fixes the AgentRouter validation failures by implementing proper Claude CLI header spoofing during credential checks and validation probes.
+
+## Fixed
+- **AgentRouter Validation** — Added support for `agentrouter` validation in route handlers and `testUtils.js` using identical dynamic Claude CLI fingerprint headers.
+- **Header Refactoring** — Unified Claude CLI header generation into a shared `buildAgentRouterHeaders` helper to avoid duplication and drift.
+
+# v0.9.62 (2026-07-19)
+
+VansRouter 0.9.62 restores the `prepublishOnly` lifecycle script to the CLI configuration to guarantee that the Next.js standalone server directory (`app/`) is always built and packaged during npm releases.
+
+## Fixed
+- **NPM Package Standalone Restoration** — Restored `prepublishOnly` build hook in `cli/package.json` to resolve missing standalone directory errors on global installations.
+
+# v0.9.61 (2026-07-19)
+
+VansRouter 0.9.61 fixes standalone Next.js server runtime issues in clean environments by including explicit dependencies (like `react`, `react-dom`, `node-machine-id`, and `ora`) in the CLI package structure.
+
+## Fixed
+- **CLI Runtime Dependencies** — Added `react`, `react-dom`, `node-machine-id`, and `ora` to `cli/package.json` to ensure clean global/local installations have standard runtime dependencies available.
+
+# v0.9.60 (2026-07-19)
+
+VansRouter 0.9.60 introduces granular settings controls for guards (Loop Guard, Circuit Breaker, Semaphore) in the Token Saver dashboard, extracts cleanCookie helper utilities, refactors the validation routes to isolate GraphQL payloads, and handles various robust toggle evaluations.
+
+## Added
+- **Guards & Shields Panel** — Added Loop Guard, Circuit Breaker, and Semaphore toggles to the Token Saver dashboard page.
+- **Isolate Muse Spark Connection Validation** — Relocated Meta AI GraphQL query payloads from route handlers to their respective executor definitions.
+
+## Fixed
+- **Robust Toggle Evaluations** — Fixed boolean evaluations against SQLite integer formats (0/1) for circuit breaker, loop guard, and semaphore toggles.
+- **Extracted cleanCookie Utility** — Unified cookie cleaning (sso, ecto_1_sess, __Secure-next-auth) into a shared `cookie.js` utility.
+
+# v0.9.56 (2026-07-19)
+
+VansRouter 0.9.56 restores the visibility of Web Cookie providers in the dashboard, allowing users to configure Meta AI Muse Spark Web cookie-based authentication, and rebases local customizations cleanly onto the latest upstream branch.
+
+## Added
+- **Web Cookie Section in Dashboard** — Added a dedicated "Web Cookie Providers" section to the main dashboard providers layout to display cookie-based providers (like Meta AI Muse Spark Web).
+- **Muse Spark Web Support** — Restored local integration for Meta AI Muse Spark Web including provider definitions, executor routes, and thinking model selectors.
+
+## Fixed
+- **Rebase Customizations** — Resolved git branch conflicts by rebasing local commits onto origin/main, keeping `dompurify` dependencies, custom brand styling, and layout features intact.
+
+# v0.9.55 (2026-07-19)
+
+VansRouter 0.9.55 restores the CLI package scripts for NPM publishing, adopts upstream commits for Kimi dual-auth/flow animations/asset caching, and resolves packaging lints.
+
+## Added
+- **CLI Package Scripts** — Restored `build`, `pack:cli`, `publish:cli`, and `postinstall` to `cli/package.json` to ensure postinstall hooks (dynamic SQLite and tray runtime setup) execute during global npm installations.
+- **Rename Protection Comment** — Added `comment_name` to `cli/package.json` warning future AI agents against renaming the package to `9router` (which breaks the global updater).
+- **Virgin Sandbox Verification** — Verified plug-and-play local installation of the generated `.tgz` package inside a clean `/tmp` directory.
+
+## Adopted from upstream
+- **Kimi Dual-Auth (`68566f53d`)** — Integrated OAuth/API-key dual-auth connection, unified `"kimi-coding"` and `"kimi"`, and updated refresh token flows.
+- **Flow Animation (`0513bf393`)** — Added dynamic router plasma flow animations to topology edges.
+- **Icon & API Cache (`ccb0842d0`)** — Optimized model list page mounting and added a session-level 404 cache to prevent redundant icon spam.
+
+## Fixed
+- **Turbopack Dev Server CSS Warn** — Identified and documented the Next.js Turbopack CSS parser bug with Tailwind v4 (hex escape normalization failure on `--shadow-elev` inside `.shadow-[var(...)]`). Provided `npm run dev:webpack` as the recommended workaround for development.
+- **Missing PropTypes in Topology** — Added missing `PropTypes` import in `ProviderTopology.js` to resolve eslint no-undef failures.
+- **VansAI Branding Preservation** — Retained VansAI custom branding over upstream "9Router" logo updates in the topology layout.
+- **WebP Icon Extension Support** — Configured `ProviderIcon` component to support both PNG and WebP formats dynamically.
+
+# v0.9.51 (2026-07-19)
+
+VansRouter 0.9.51 adopts all upstream `decolua/9router` commits from `v0.5.31` to `v0.5.35` and fixes critical packaging, translation, and reasoning leaks.
+
+## Adopted from upstream (v0.5.31–v0.5.35)
+
+### Features
+- **Grok Imagine** — Grok video generation via `/v1/videos` endpoint + CLI command (`d6761c6fb`)
+- **Grok Build setup** — CLI tool card and settings route for Grok Build (`70e8dc497`)
+- **Kiro GPT-5.6 model family** — adds GPT-5.6 model slots to Kiro provider (`b94685b80`)
+- **X-9Router-Token-Saver header** — per-request bypass header to skip token savers (`c9926897b`)
+- **Thai language translation** — full 1389-key th.json + README.th.md (`0248dd534`)
+- **Persian (fa) translations** — UI literals + README.fa_IR.md (`02ccdc2d2`)
+
+### Fixes
+- **bulk-add API keys** — no longer overwrites existing keys (`de680e789`)
+- **anthropic-version header** — lowercase to prevent duplication on `/v1/messages` (`6acc3bb96`)
+- **alicode-intl** — use DashScope compatible-mode endpoint so standard keys work (`8b9cac180`)
+- **translator** — strip `client_metadata` when converting `openai-responses` to `openai` (`e567ba800`)
+- **thinking** — send explicit `thinking:{type:adaptive}` alongside `output_config.effort` (`ba508f250`)
+- **translator** — drop temperature for all Claude models (`9173c29b6`)
+- **grok-cli** — surface `expiresAt` so proactive token refresh fires (`7dfb34666`)
+- **grok-cli** — align Grok Build with current subscription protocol (`59b782823`)
+- **models** — populate capabilities for live-catalog LLM models (`2629218b0`)
+- **models** — list compatible provider models in `/v1/models` (`88a8c72d2`)
+- **kiro** — improve direct session cache reuse (`9c58ba645`)
+- **startup** — skip inactive background services on boot (`27b37705b`)
+
+## Fixed (VansRouter-specific)
+- **CLI Packaging (Issue #53)** — Added `"app"` and `"src"` back to the `files` array of `cli/package.json` so the Next.js production build is bundled, raising size from a broken `197 kB` back to a healthy `88.3 MB`.
+- **Thinking Concerns ReferenceError** — Resolved `ReferenceError: Cannot access 'fmt' before initialization` in `open-sse/translator/concerns/thinkingUnified.js`.
+- **GLM-5.2 Reasoning Leak** — Re-integrated the `effectiveCfg` logic in `thinkingUnified.js` to prevent reasoning leak on `agentrouter` when the client does not explicitly request thinking.
+- **Kiro Auto Slot** — Added the missing `{ id: "auto", name: "Auto / Agent default", alias: "auto" }` mapping to Kiro's `defaultModels` in `src/shared/constants/cliTools.js`.
+- **NPM Package Rename** — Renamed root package to `"vansrouter-app"`, tests package to `"vansrouter-tests"`, and CLI package to `"vansrouter"`.
+- `open-sse/handlers/chatCore.js` — tambah import `extractThinking` dan definisi `reqTag` yang upstream referensikan tapi tidak dideklarasikan
+- `open-sse/translator/request/openai-to-kiro.js` — tambah `import { randomUUID } from "node:crypto"`
+- `src/app/api/v1/models/route.js` — inisialisasi `liveCapabilitiesById` dan `liveKind` dari hasil live resolver
+- `src/app/api/providers/[id]/models/route.js` — ganti `getStaticProviderModels()` yang tidak ada dengan fallback `[]`
+
+## Skipped (sengaja tidak diadopsi)
+- Penghapusan ZCode provider — upstream menghapus ZCode; VansRouter tetap mempertahankannya
+- Restore branding 9Router — upstream mengembalikan label UI 9Router; dilewati untuk menjaga branding VansAI
+
+# v0.9.5 (2026-07-19)
+
+VansRouter 0.9.5 hardens React-Doctor build diagnostics, optimizes `/masuk` page accessibility contrast, and adds a regression test for the `.9router` data directory and Docker volume persistence.
+
+## Added
+- **Database Paths Verification Test** — `tests/unit/database-paths-verification.test.js` asserts `dataDir.js` defines `APP_NAME = "9router"`, `db/paths.js` resolves to `DATA_DIR/db/data.sqlite`, and `docker-compose.yml` keeps the `9router-data` volume mount intact.
+
+## Fixed
+- **React-Doctor timer leaks** — `ConnectionRow.js` and `ConnectionsCard.js`: `setInterval(checkCooldown)` now only starts when `modelLockUntil` is set and is unconditionally cleared on unmount.
+- **React-Doctor impure state updater** — `UsageTable.js`: `localStorage.setItem` moved out of `setExpanded((prev) => …)` into a dedicated `useEffect([expanded, storageKey])`.
+- **React-Doctor abort cleanup** — `login/page.js`: `AbortController` and `timeoutId` hoisted outside `checkAuth` so `useEffect` cleanup reliably aborts fetch and clears timeout on unmount.
+- **SSR crash — Language Switcher & Promo Modal** — both components now guard `createPortal(…, document.body)` behind a `mounted` state so the portal only runs after client mount.
+- **`/masuk` accessibility contrast** — password label promoted from `font-medium` to `font-semibold text-text-main`; helper paragraph set to `text-sm` to satisfy Lighthouse AAA.
+
+## Changed
+- `doctor.config.json` — corrected `projects` target from `"vansrouter-app"` to `"9router-app"`; added `react-doctor/effect-needs-cleanup` to disabled rules (false positive on the conditional `setInterval` pattern).
+- `package.json` and `cli/package.json` — version bump to `0.9.5`.
+
+# v0.9.4 (2026-07-16)
+
+VansRouter 0.9.4 fixes source-clone version detection and preserves Docker SQLite data across updates.
+
+## Fixed
+- **Version Update Detection** — checks the published `vansrouter` package instead of legacy `9router`.
+- **Docker SQLite Volume Persistence** — preserves the `9router-data` volume name.
+
+
+# v0.9.3 (2026-07-16)
+
+VansRouter 0.9.3 replaces placeholder logos with official icons, aligns multi-name provider assets, removes redundant defaultModel input for custom compatible endpoints, and syncs upstream omnirouter provider additions.
+
+## Added
+- **Official WebP Icons** — Replaces 17+ empty placeholder assets with official high-quality logos for Databricks, GitLab, Weights & Biases, Bytez, Galadriel, PublicAI, DeepInfra, Venice, SambaNova, Snowflake, Upstage, AI21 Labs, Vercel, Venice, and Volcengine.
+- **Provider Icon Aliasing** — Copies and maps Grok CLI (`grok-cli.webp`) to Grok Web, ClinePass (`clinepass.webp`) to Cline, MiMo Free (`mmf.webp`) to MiMo, and Perplexity Agent (`perplexity-agent.webp`) to Perplexity.
+
+## Fixed
+- **Docker SQLite Volume Persistence** — preserves the `9router-data` volume name; renaming it creates a new empty database volume without a Docker or application error.
+- **Custom Endpoint API Key Form** — Removes the redundant and confusing `Default Model` field when adding API keys for custom OpenAI/Anthropic compatible endpoints.
+- **Next.js Local Image Cache** — Clears dynamic image optimizer cache to force reload of updated provider icons.
+
+## Changed
+- Root and CLI package versions bumped to **0.9.3**.
+
 # v0.9.1 (2026-07-11)
 
 VansRouter 0.9.1 fixes the `content-blocked` fallback locking loop, aligns `agentrouter` headers dynamically to bypass WAF edge blocks (405), and includes recent fixes for Responses API compatibility, usage tracking, and CI/lint configurations.

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/shared/utils/cn";
-import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
+import { APP_CONFIG, UPDATER_CONFIG, GITHUB_CONFIG } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Button from "./Button";
@@ -12,7 +12,7 @@ import { ConfirmModal } from "./Modal";
 import NineRemotePromoModal from "./NineRemotePromoModal";
 
 // const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt", "webSearch", "webFetch", "video", "music"];
-const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt"];
+const VISIBLE_MEDIA_KINDS = ["embedding", "image", "video", "tts", "stt"];
 // Combined entry: webSearch + webFetch share one page at /dashboard/media-providers/web
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
@@ -149,6 +149,21 @@ export default function Sidebar({ onClose }) {
                     {copied ? "✓ copied!" : (updateInfo.installCommand || INSTALL_CMD)}
                   </code>
                 </button>
+              </div>
+              <div className="flex items-center mt-0.5">
+                <a
+                  href={
+                    GITHUB_CONFIG.changelogUrl
+                      ? GITHUB_CONFIG.changelogUrl.replace("raw.githubusercontent.com", "github.com").replace("/refs/heads/", "/blob/")
+                      : "https://github.com/Vanszs/VansRouter/blob/main/CHANGELOG.md"
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] text-green-600/80 hover:text-green-700 dark:text-amber-500/80 dark:hover:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[12px]">description</span>
+                  Check new changelog
+                </a>
               </div>
             </div>
           )}
